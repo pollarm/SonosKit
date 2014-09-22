@@ -22,4 +22,6 @@
 - (BOOL)saveChanges;
 - (void)pairController:(SonosController *)controller1 with:(SonosController *)controller2;
 
+- (void)discoverControllers;
+
 @end

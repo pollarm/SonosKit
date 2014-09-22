@@ -27,13 +27,10 @@ typedef void (^kFindControllersBlock)(NSArray *ipAddresses);
       NSMutableArray *controllers = [[NSMutableArray alloc] init];
 
       if (ipAddresses.count == 0) {
-#if TARGET_IPHONE_SIMULATOR
-        completion([discover testControllers], nil);
-        return;
-#else
+
         completion(nil, nil);
         return;
-#endif
+
       }
 
       NSString *ipAddress = [ipAddresses objectAtIndex:0];
@@ -45,7 +42,8 @@ typedef void (^kFindControllersBlock)(NSArray *ipAddresses);
         NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
         if (httpResponse.statusCode != 200) return;
 
-        NSDictionary *responseDict = [XMLReader dictionaryForXMLData:data error:&error];
+          NSString *raw = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+          NSDictionary *responseDict = [XMLReader dictionaryForXMLString:raw error:&error];
         NSArray *inputs = responseDict[@"ZPSupportInfo"][@"ZonePlayers"][@"ZonePlayer"];
 
         for (NSDictionary *input in inputs) {
@@ -55,7 +53,7 @@ typedef void (^kFindControllersBlock)(NSArray *ipAddresses);
           NSString *ip = [ipLocation substringWithRange:ipRegexMatch.range];
           BOOL coordinator = [input[@"coordinator"] isEqualToString:@"true"] ? YES : NO;
 
-          if (![input[@"text"] isEqualToString:@"Sonos Bridge"]) {
+          if ([input[@"text"] rangeOfString:@"Bridge"].location == NSNotFound) {
             [controllers addObject:@{
                                      @"ip": ip,
                                      @"name": input[@"text"],
@@ -65,6 +63,10 @@ typedef void (^kFindControllersBlock)(NSArray *ipAddresses);
                                      }];
           }
         }
+          
+          if(controllers.count == 0) {
+              NSLog(@"%@", raw);
+          }
 
         dispatch_async(dispatch_get_main_queue(), ^{
           completion(controllers, error);
@@ -78,6 +80,8 @@ typedef void (^kFindControllersBlock)(NSArray *ipAddresses);
 
 - (void)findControllers:(kFindControllersBlock)block
 {
+    NSLog(@"SonosDiscovery findControllers");
+    
   _completionBlock = block;
   _ipAddresses = [NSArray array];
   _udpSocket = [[GCDAsyncUdpSocket alloc] initWithDelegate:self delegateQueue:dispatch_get_main_queue()];
@@ -99,16 +103,20 @@ typedef void (^kFindControllersBlock)(NSArray *ipAddresses);
   NSString *data = @"M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp: discover\"\r\nMX: 3\r\nST: urn:schemas-upnp-org:device:ZonePlayer:1\r\n\r\n";
   [_udpSocket sendData:[data dataUsingEncoding:NSUTF8StringEncoding] toHost:@"239.255.255.250" port:1900 withTimeout:-1 tag:0];
 
-  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2*NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3*NSEC_PER_SEC), dispatch_get_main_queue(), ^{
     [self stopDiscovery];
   });
 }
 
 - (void)stopDiscovery
 {
+    if (_udpSocket) {
+        _completionBlock(_ipAddresses);
+    }
   [_udpSocket close];
   _udpSocket = nil;
-  _completionBlock(_ipAddresses);
+    NSLog(@"stopDiscovery %lu _ipAddresses", (unsigned long)_ipAddresses.count);
+  
 }
 
 - (NSArray *)testControllers
@@ -158,7 +166,8 @@ typedef void (^kFindControllersBlock)(NSArray *ipAddresses);
 - (void)udpSocket:(GCDAsyncUdpSocket *)sock didReceiveData:(NSData *)data fromAddress:(NSData *)address withFilterContext:(id)filterContext
 {
   NSString *msg = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-  if (msg) {
+  if (msg && [msg rangeOfString:@"urn:schemas-upnp-org:device:ZonePlayer"].location != NSNotFound) {
+      NSLog(@"%@", msg);
     NSRegularExpression *reg = [[NSRegularExpression alloc] initWithPattern:@"http:\\/\\/(.*?)\\/" options:0 error:nil];
     NSArray *matches = [reg matchesInString:msg options:0 range:NSMakeRange(0, msg.length)];
     if (matches.count > 0) {
@@ -166,6 +175,7 @@ typedef void (^kFindControllersBlock)(NSArray *ipAddresses);
       NSString *matched = [msg substringWithRange:[result rangeAtIndex:0]];
       NSString *ip = [[matched substringFromIndex:7] substringToIndex:matched.length-8];
       _ipAddresses = [_ipAddresses arrayByAddingObject:ip];
+        [self stopDiscovery];
     }
   }
 }

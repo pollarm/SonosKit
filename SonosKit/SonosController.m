@@ -112,11 +112,33 @@
   NSURLSession *session = [NSURLSession sharedSession];
   NSURLSessionDataTask *task = [session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
     NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
-    if (httpResponse.statusCode != 200) return;
+      if (httpResponse.statusCode != 200) {
+          if(!error) {
+              NSString *raw = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+              NSDictionary *responseDict = [XMLReader dictionaryForXMLString:raw options:XMLReaderOptionsProcessNamespaces error:&error];
+              NSLog(@"%@",responseDict);
+              NSString *errorCode = responseDict[@"Envelope"][@"Body"][@"Fault"][@"detail"][@"UPnPError"][@"errorCode"][@"text"];
+              if(errorCode) {
+                  error = [NSError errorWithDomain:@"UPnPError" code:[errorCode integerValue] userInfo:@{}];
+              }
+              else {
+                  error = [NSError errorWithDomain:@"NetworkError" code:httpResponse.statusCode userInfo:@{}];
+              }
+          }
+          dispatch_async(dispatch_get_main_queue(), ^{
+              if (block) block(nil, error);
+          });
+          return;
+      }
 
-    NSDictionary *responseDict = [XMLReader dictionaryForXMLData:data options:XMLReaderOptionsProcessNamespaces error:&error];
-    NSDictionary *body = responseDict[@"Envelope"][@"Body"];
+      NSString *raw = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    //NSDictionary *responseDict = [XMLReader dictionaryForXMLData:data options:XMLReaderOptionsProcessNamespaces error:&error];
+      NSDictionary *responseDict2 = [XMLReader dictionaryForXMLString:raw options:XMLReaderOptionsProcessNamespaces error:&error];
+    NSDictionary *body = responseDict2[@"Envelope"][@"Body"];
 
+      if(body == nil) {
+          NSLog(@"WTF");
+      }
     dispatch_async(dispatch_get_main_queue(), ^{
       if (block) block(body, nil);
     });
@@ -291,7 +313,7 @@
 
 - (void)getMute:(void(^)(NSDictionary *response, NSError *error))block
 {
-  NSDictionary *params = @{@"InstanceID": @0};
+  NSDictionary *params = @{@"InstanceID": @0, @"Channel":@"Master"};
   [self request:SonosRequestTypeRenderingControl action:@"GetMute" params:params completion:block];
 }
 
@@ -317,9 +339,9 @@
 - (void)setVolume:(NSInteger)volume completion:(void (^)(NSDictionary *, NSError *))block
 {
   // This helps throttle requests so we're not flodding the speaker.
-  if (_volumeLevel == volume) return;
+  //if (_volumeLevel == volume) return;
 
-  NSDictionary *params = @{@"InstanceID": @0, @"Channel":@"Master", @"DesiredVolume":[NSNumber numberWithInt:volume]};
+  NSDictionary *params = @{@"InstanceID": @0, @"Channel":@"Master", @"DesiredVolume":[NSNumber numberWithInteger:volume]};
   [self request:SonosRequestTypeRenderingControl action:@"SetVolume" params:params completion:^(NSDictionary *response, NSError *error) {
     _volumeLevel = volume;
     if (block) block(response, error);
@@ -339,7 +361,7 @@
                            @"BrowseFlag": @"BrowseDirectChildren",
                            @"Filter": @"*",
                            @"StartingIndex": @0,
-                           @"RequestedCount": @5,
+                           @"RequestedCount": @0,
                            @"SortCriteria": @"*"};
   [self request:SonosRequestTypeContentDirectory action:@"Browse" params:params completion:block];
 }
