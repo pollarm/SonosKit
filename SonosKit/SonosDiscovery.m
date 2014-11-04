@@ -45,7 +45,7 @@ typedef void (^kFindControllersBlock)(NSArray *ipAddresses);
           NSString *raw = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
           NSDictionary *responseDict = [XMLReader dictionaryForXMLString:raw error:&error];
         NSArray *inputs = responseDict[@"ZPSupportInfo"][@"ZonePlayers"][@"ZonePlayer"];
-
+          // crashed here at Andys ... possible because only a single zone?
         for (NSDictionary *input in inputs) {
           NSString *ipLocation = input[@"location"];
           NSRegularExpression *ipRegex = [NSRegularExpression regularExpressionWithPattern:@"\\d{1,3}.\\d{1,3}.\\d{1,3}.\\d{1,3}" options:0 error:nil];
