@@ -10,25 +10,26 @@
 #import "XMLReader.h"
 #import "SonosController.h"
 
-typedef void (^kFindControllersBlock)(NSArray *ipAddresses);
+typedef void (^kFindControllersBlock)(NSArray *ipAddresses, NSString *household);
 
 @implementation SonosDiscovery {
   GCDAsyncUdpSocket *_udpSocket;
   kFindControllersBlock _completionBlock;
   NSArray *_ipAddresses;
+    NSString *_household;
 }
 
-+ (void)discoverControllers:(void(^)(NSArray *controllers, NSError *error))completion
++ (void)discoverControllers:(void(^)(NSArray *controllers, NSString *householdId, NSError *error))completion
 {
   dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
     SonosDiscovery *discover = [[SonosDiscovery alloc] init];
 
-    [discover findControllers:^(NSArray *ipAddresses) {
+    [discover findControllers:^(NSArray *ipAddresses, NSString *household) {
       NSMutableArray *controllers = [[NSMutableArray alloc] init];
 
       if (ipAddresses.count == 0) {
 
-        completion(nil, nil);
+        completion(nil, nil, nil);
         return;
 
       }
@@ -69,7 +70,7 @@ typedef void (^kFindControllersBlock)(NSArray *ipAddresses);
           }
 
         dispatch_async(dispatch_get_main_queue(), ^{
-          completion(controllers, error);
+          completion(controllers, household, error);
         });
       }];
 
@@ -111,7 +112,7 @@ typedef void (^kFindControllersBlock)(NSArray *ipAddresses);
 - (void)stopDiscovery
 {
     if (_udpSocket) {
-        _completionBlock(_ipAddresses);
+        _completionBlock(_ipAddresses, _household);
     }
   [_udpSocket close];
   _udpSocket = nil;
@@ -119,65 +120,36 @@ typedef void (^kFindControllersBlock)(NSArray *ipAddresses);
   
 }
 
-- (NSArray *)testControllers
-{
-  NSMutableArray *controllers = [[NSMutableArray alloc] init];
-
-  [controllers addObject:@{
-                           @"ip": @"10.0.1.1",
-                           @"name": @"Living Room",
-                           @"coordinator": @1,
-                           @"uuid": @"RINCON_000E58D0540801400",
-                           @"group": @"RINCON_000E58D0540801400",
-                           @"controller": [[SonosController alloc] initWithIP:@"10.0.1.1"]
-                           }];
-
-  [controllers addObject:@{
-                           @"ip": @"10.0.1.2",
-                           @"name": @"Bedroom",
-                           @"coordinator": @1,
-                           @"uuid": @"RINCON_000E58898D4C01400",
-                           @"group": @"RINCON_000E58898D4C01400",
-                           @"controller": [[SonosController alloc] initWithIP:@"10.0.1.2"]
-                           }];
-
-  [controllers addObject:@{
-                           @"ip": @"10.0.1.3",
-                           @"name": @"Kitchen",
-                           @"coordinator": @0,
-                           @"uuid": @"RINCON_000E587BBA5201400",
-                           @"group": @"RINCON_000E58D0540801400",
-                           @"controller": [[SonosController alloc] initWithIP:@"10.0.1.3"]
-                           }];
-
-  [controllers addObject:@{
-                           @"ip": @"10.0.1.4",
-                           @"name": @"Bathroom",
-                           @"coordinator": @0,
-                           @"uuid": @"RINCON_000E587641F201400",
-                           @"group": @"RINCON_000E58D0540801400",
-                           @"controller": [[SonosController alloc] initWithIP:@"10.0.1.4"]
-                           }];
-  return [controllers copy];
-}
 
 #pragma mark - GCDAsyncUdpSocketDelegate
 
 - (void)udpSocket:(GCDAsyncUdpSocket *)sock didReceiveData:(NSData *)data fromAddress:(NSData *)address withFilterContext:(id)filterContext
 {
-  NSString *msg = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-  if (msg && [msg rangeOfString:@"urn:schemas-upnp-org:device:ZonePlayer"].location != NSNotFound) {
-      NSLog(@"%@", msg);
-    NSRegularExpression *reg = [[NSRegularExpression alloc] initWithPattern:@"http:\\/\\/(.*?)\\/" options:0 error:nil];
-    NSArray *matches = [reg matchesInString:msg options:0 range:NSMakeRange(0, msg.length)];
-    if (matches.count > 0) {
-      NSTextCheckingResult *result = matches[0];
-      NSString *matched = [msg substringWithRange:[result rangeAtIndex:0]];
-      NSString *ip = [[matched substringFromIndex:7] substringToIndex:matched.length-8];
-      _ipAddresses = [_ipAddresses arrayByAddingObject:ip];
-        [self stopDiscovery];
+    NSString *msg = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    if (msg && [msg rangeOfString:@"urn:schemas-upnp-org:device:ZonePlayer"].location != NSNotFound) {
+        NSLog(@"%@", msg);
+        NSRegularExpression *reg = [[NSRegularExpression alloc] initWithPattern:@"http:\\/\\/(.*?)\\/" options:0 error:nil];
+        NSArray *matches = [reg matchesInString:msg options:0 range:NSMakeRange(0, msg.length)];
+        
+        NSString *household = nil;
+        NSRange householdHeaderRange = [msg rangeOfString:@"X-RINCON-HOUSEHOLD: "];
+        if(householdHeaderRange.location != NSNotFound) {
+            NSString *householdAndRest = [msg substringFromIndex:householdHeaderRange.location+householdHeaderRange.length];
+            NSRange householdEndRange = [householdAndRest rangeOfString:@"\r"];
+            if(householdEndRange.location != NSNotFound) {
+                household = [householdAndRest substringToIndex:householdEndRange.location];
+            }
+        }
+        
+        if (matches.count > 0 && household) { // eg. HHID_vQi8ojPG58Ctex7ZxjaUdtiXcKg
+            NSTextCheckingResult *result = matches[0];
+            NSString *matched = [msg substringWithRange:[result rangeAtIndex:0]];
+            NSString *ip = [[matched substringFromIndex:7] substringToIndex:matched.length-8];
+            _ipAddresses = [_ipAddresses arrayByAddingObject:ip];
+            _household = household;
+            [self stopDiscovery];
+        }
     }
-  }
 }
 
 @end

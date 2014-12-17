@@ -11,6 +11,6 @@
 
 @interface SonosDiscovery : NSObject <GCDAsyncUdpSocketDelegate>
 
-+ (void)discoverControllers:(void(^)(NSArray *controllers, NSError *error))completion;
++ (void)discoverControllers:(void(^)(NSArray *controllers, NSString *householdId , NSError *error))completion;
 
 @end
