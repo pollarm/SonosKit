@@ -116,7 +116,7 @@
           if(!error) {
               NSString *raw = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
               NSDictionary *responseDict = [XMLReader dictionaryForXMLString:raw options:XMLReaderOptionsProcessNamespaces error:&error];
-              NSLog(@"%@",responseDict);
+              //NSLog(@"%@",responseDict);
               NSString *errorCode = responseDict[@"Envelope"][@"Body"][@"Fault"][@"detail"][@"UPnPError"][@"errorCode"][@"text"];
               if(errorCode) {
                   error = [NSError errorWithDomain:@"UPnPError" code:[errorCode integerValue] userInfo:@{}];
