@@ -7,9 +7,8 @@
 //
 
 #import <Foundation/Foundation.h>
-#import <GCDAsyncUdpSocket.h>
 
-@interface SonosDiscovery : NSObject <GCDAsyncUdpSocketDelegate>
+@interface SonosDiscovery : NSObject
 
 + (void)discoverControllers:(void(^)(NSArray *controllers, NSString *householdId , NSError *error))completion;
 

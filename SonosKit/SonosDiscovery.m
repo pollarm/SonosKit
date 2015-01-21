@@ -9,8 +9,12 @@
 #import "SonosDiscovery.h"
 #import "XMLReader.h"
 #import "SonosController.h"
+#import <GCDAsyncUdpSocket.h>
 
 typedef void (^kFindControllersBlock)(NSArray *ipAddresses, NSString *household);
+
+@interface SonosDiscovery () <GCDAsyncUdpSocketDelegate>
+@end
 
 @implementation SonosDiscovery {
   GCDAsyncUdpSocket *_udpSocket;
