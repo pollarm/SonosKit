@@ -81,7 +81,7 @@ typedef NS_ENUM(NSInteger, SonosRequestType) {
 
 // MusicServices
 
-- (void)listAvailableServices:(void(^)(NSDictionary *services, NSDictionary *response, NSError *error))block;
+- (void)listAvailableServices:(void (^)(NSDictionary *serviceTypes, NSDictionary *, NSDictionary *serviceDescriptors, NSError *))block;
 
 // DeviceProperties
 

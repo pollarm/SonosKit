@@ -386,11 +386,12 @@
 
 #pragma mark - MusicServices
 
-- (void)listAvailableServices:(void (^)(NSDictionary *, NSDictionary *, NSError *))block
+- (void)listAvailableServices:(void (^)(NSDictionary *, NSDictionary *, NSDictionary *, NSError *))block
 {
   [self request:SonosRequestTypeMusicServices action:@"ListAvailableServices" params:nil completion:^(NSDictionary *response, NSError *error) {
-    NSDictionary *services = [XMLReader dictionaryForXMLString:response[@"ListAvailableServicesResponse"][@"AvailableServiceDescriptorList"][@"text"] options:XMLReaderOptionsProcessNamespaces error:&error];
-    if (block) block(services, response, error);
+    NSDictionary *serviceDescriptors = [XMLReader dictionaryForXMLString:response[@"ListAvailableServicesResponse"][@"AvailableServiceDescriptorList"][@"text"] options:XMLReaderOptionsProcessNamespaces error:&error];
+      NSDictionary *serviceTypes = [XMLReader dictionaryForXMLString:response[@"ListAvailableServicesResponse"][@"AvailableServiceTypeList"][@"text"] options:XMLReaderOptionsProcessNamespaces error:&error];
+    if (block) block(serviceTypes, serviceDescriptors, response, error);
   }];
 }
 
