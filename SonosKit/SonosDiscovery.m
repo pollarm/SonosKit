@@ -28,59 +28,91 @@ typedef void (^kFindControllersBlock)(NSArray *ipAddresses, NSString *household)
   dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
     SonosDiscovery *discover = [[SonosDiscovery alloc] init];
 
-    [discover findControllers:^(NSArray *ipAddresses, NSString *household) {
-      NSMutableArray *controllers = [[NSMutableArray alloc] init];
-
-      if (ipAddresses.count == 0) {
-
-        completion(nil, nil, nil);
-        return;
-
-      }
-
-      NSString *ipAddress = [ipAddresses objectAtIndex:0];
-      NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://%@/status/topology", ipAddress]];
-      NSURLRequest *request = [[NSURLRequest alloc] initWithURL:url cachePolicy:NSURLRequestReloadIgnoringCacheData timeoutInterval:5];
-
-      NSURLSession *session = [NSURLSession sharedSession];
-      NSURLSessionDataTask *task = [session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
-        if (httpResponse.statusCode != 200) return;
-
-          NSString *raw = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-          NSDictionary *responseDict = [XMLReader dictionaryForXMLString:raw error:&error];
-        NSArray *inputs = responseDict[@"ZPSupportInfo"][@"ZonePlayers"][@"ZonePlayer"];
-          // crashed here at Andys ... possible because only a single zone?
-        for (NSDictionary *input in inputs) {
-          NSString *ipLocation = input[@"location"];
-          NSRegularExpression *ipRegex = [NSRegularExpression regularExpressionWithPattern:@"\\d{1,3}.\\d{1,3}.\\d{1,3}.\\d{1,3}" options:0 error:nil];
-          NSTextCheckingResult *ipRegexMatch = [ipRegex firstMatchInString:ipLocation options:0 range:NSMakeRange(0, ipLocation.length)];
-          NSString *ip = [ipLocation substringWithRange:ipRegexMatch.range];
-          BOOL coordinator = [input[@"coordinator"] isEqualToString:@"true"] ? YES : NO;
-
-          if ([input[@"text"] rangeOfString:@"Bridge"].location == NSNotFound) {
-            [controllers addObject:@{
-                                     @"ip": ip,
-                                     @"name": input[@"text"],
-                                     @"coordinator": [NSNumber numberWithBool:coordinator],
-                                     @"uuid": input[@"uuid"],
-                                     @"group": input[@"group"]
-                                     }];
-          }
-        }
+      [discover findControllers:^(NSArray *ipAddresses, NSString *household) {
+          NSMutableArray *controllers = [[NSMutableArray alloc] init];
           
-          if(controllers.count == 0) {
-              NSLog(@"%@", raw);
+          if (ipAddresses.count == 0) {
+              
+              completion(nil, nil, nil);
+              return;
+              
           }
-
-        dispatch_async(dispatch_get_main_queue(), ^{
-          completion(controllers, household, error);
-        });
+          @autoreleasepool {
+              NSString *ipAddress = [ipAddresses objectAtIndex:0];
+              NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://%@/status/topology", ipAddress]];
+              NSURLRequest *request = [[NSURLRequest alloc] initWithURL:url cachePolicy:NSURLRequestReloadIgnoringCacheData timeoutInterval:5];
+              
+              NSURLSession *session = [NSURLSession sharedSession];
+              NSURLSessionDataTask *task = [session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+                  NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
+                  if (httpResponse.statusCode != 200) return;
+                  
+                  NSString *raw = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+                  NSDictionary *responseDict = [XMLReader dictionaryForXMLString:raw error:&error];
+                  NSArray *inputs = responseDict[@"ZPSupportInfo"][@"ZonePlayers"][@"ZonePlayer"];
+                  // crashed here at Andys ... possible because only a single zone?
+                  
+                  dispatch_group_t group = dispatch_group_create();
+                  NSURLSessionConfiguration *descriptionsSessionConfig = [NSURLSessionConfiguration defaultSessionConfiguration];
+                  descriptionsSessionConfig.timeoutIntervalForRequest = 5;
+                  descriptionsSessionConfig.timeoutIntervalForResource = 5;
+                  NSURLSession *descriptionsSession = [NSURLSession sessionWithConfiguration:descriptionsSessionConfig];
+                  
+                  for (NSDictionary *input in inputs) {
+                      NSString *ipLocation = input[@"location"];
+                      NSRegularExpression *ipRegex = [NSRegularExpression regularExpressionWithPattern:@"\\d{1,3}.\\d{1,3}.\\d{1,3}.\\d{1,3}" options:0 error:nil];
+                      NSTextCheckingResult *ipRegexMatch = [ipRegex firstMatchInString:ipLocation options:0 range:NSMakeRange(0, ipLocation.length)];
+                      NSString *ip = [ipLocation substringWithRange:ipRegexMatch.range];
+                      BOOL coordinator = [input[@"coordinator"] isEqualToString:@"true"] ? YES : NO;
+                      
+                      dispatch_group_enter(group);
+                      [self getDescriptionForZone:ipLocation usingSession:descriptionsSession completion:^(NSString *description) {
+                          if(description && [description rangeOfString:@"MediaRenderer"].location != NSNotFound) {
+                              [controllers addObject:@{
+                                                       @"ip": ip,
+                                                       @"name": input[@"text"],
+                                                       @"coordinator": [NSNumber numberWithBool:coordinator],
+                                                       @"uuid": input[@"uuid"],
+                                                       @"group": input[@"group"]
+                                                       }];
+                          }
+                          dispatch_group_leave(group);
+                      }];
+                  }
+                  
+                  dispatch_time_t tt = dispatch_time(DISPATCH_TIME_NOW, (int64_t)(15 * NSEC_PER_SEC));
+                  dispatch_group_wait(group, tt);
+                  
+                  if(controllers.count == 0) {
+                      NSLog(@"%@", raw);
+                  }
+                  
+                  dispatch_async(dispatch_get_main_queue(), ^{
+                      completion(controllers, household, error);
+                  });
+              }];
+              
+              [task resume];
+          }
       }];
-
-      [task resume];
-    }];
   });
+}
+
++(void)getDescriptionForZone:(NSString *)ipAddress usingSession:(NSURLSession*)session completion:(void(^)(NSString*description))completion {
+    
+    NSURL *url = [NSURL URLWithString:ipAddress];
+    NSURLRequest *request = [[NSURLRequest alloc] initWithURL:url cachePolicy:NSURLRequestReloadIgnoringCacheData timeoutInterval:5];
+    NSURLSessionDataTask *task = [session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
+        if (httpResponse.statusCode != 200) {
+            completion(nil);
+        }
+        
+        NSString *raw = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+        completion(raw);
+    }];
+                                  
+    [task resume];
 }
 
 - (void)findControllers:(kFindControllersBlock)block
