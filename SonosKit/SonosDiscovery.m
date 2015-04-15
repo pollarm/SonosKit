@@ -51,7 +51,7 @@ typedef void (^kFindControllersBlock)(NSArray *ipAddresses, NSString *household)
                   NSDictionary *responseDict = [XMLReader dictionaryForXMLString:raw error:&error];
                   NSArray *inputs = responseDict[@"ZPSupportInfo"][@"ZonePlayers"][@"ZonePlayer"];
                   // crashed here at Andys ... possible because only a single zone?
-                  
+
                   dispatch_group_t group = dispatch_group_create();
                   NSURLSessionConfiguration *descriptionsSessionConfig = [NSURLSessionConfiguration defaultSessionConfiguration];
                   descriptionsSessionConfig.timeoutIntervalForRequest = 5;
@@ -107,9 +107,10 @@ typedef void (^kFindControllersBlock)(NSArray *ipAddresses, NSString *household)
         if (httpResponse.statusCode != 200) {
             completion(nil);
         }
-        
-        NSString *raw = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-        completion(raw);
+        else {
+            NSString *raw = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+            completion(raw);
+        }
     }];
                                   
     [task resume];
