@@ -48,9 +48,14 @@ typedef void (^kFindControllersBlock)(NSArray *ipAddresses, NSString *household)
                   if (httpResponse.statusCode != 200) return;
                   
                   NSString *raw = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+                  
                   NSDictionary *responseDict = [XMLReader dictionaryForXMLString:raw error:&error];
                   NSArray *inputs = responseDict[@"ZPSupportInfo"][@"ZonePlayers"][@"ZonePlayer"];
                   // crashed here at Andys ... possible because only a single zone?
+                  // so this is the fix.
+                  if ([inputs isKindOfClass:[NSDictionary class]]) {
+                      inputs = @[inputs];
+                  }
 
                   dispatch_group_t group = dispatch_group_create();
                   NSURLSessionConfiguration *descriptionsSessionConfig = [NSURLSessionConfiguration defaultSessionConfiguration];
