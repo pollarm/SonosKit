@@ -40,13 +40,15 @@ typedef void (^kFindControllersBlock)(NSArray *ipAddresses, NSString *household)
           @autoreleasepool {
               NSString *ipAddress = [ipAddresses objectAtIndex:0];
               NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://%@/status/topology", ipAddress]];
-              NSURLRequest *request = [[NSURLRequest alloc] initWithURL:url cachePolicy:NSURLRequestReloadIgnoringCacheData timeoutInterval:5];
+              NSURLRequest *request = [[NSURLRequest alloc] initWithURL:url cachePolicy:NSURLRequestReloadIgnoringCacheData timeoutInterval:10];
               
               NSURLSession *session = [NSURLSession sharedSession];
               NSURLSessionDataTask *task = [session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
                   NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
-                  if (httpResponse.statusCode != 200) return;
-                  
+                  if (httpResponse.statusCode != 200) {
+                      completion(nil, nil, nil);
+                      return;
+                  }
                   NSString *raw = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
                   
                   NSDictionary *responseDict = [XMLReader dictionaryForXMLString:raw error:&error];
