@@ -62,7 +62,7 @@
 
 - (void)discoverControllers
 {
-  [SonosDiscovery discoverControllers:^(NSArray *objects, NSError *error) {
+  [SonosDiscovery discoverControllers:^(NSArray *objects, NSString *householdId, NSError *error) {
     [self willChangeValueForKey:@"allControllers"];
 
     NSMutableArray *controllers = [[NSMutableArray alloc] init];
